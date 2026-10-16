@@ -1,0 +1,41 @@
+name: Build Windows app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build RustCut
+        run: cargo build --release
+
+      - name: Bundle with FFmpeg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/RustCut | Out-Null
+          Copy-Item target/release/rustcut.exe dist/RustCut/RustCut.exe
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg
+          $bin = Get-ChildItem -Path ffmpeg -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $bin.FullName dist/RustCut/ffmpeg.exe
+          Copy-Item (Join-Path $bin.DirectoryName "ffprobe.exe") dist/RustCut/ffprobe.exe
+          Compress-Archive -Path dist/RustCut -DestinationPath RustCut-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RustCut-Windows
+          path: RustCut-Windows.zip
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RustCut-Windows.zip
